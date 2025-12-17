@@ -1,29 +1,19 @@
-image: Ubuntu1804  # образ для сборки
+version: '{build}'
 
-stack: node 20  # обновленная версия Node.js
+image: Visual Studio 2022
 
-branches:
-  only:
-    - master  # ветка git
-
-cache:
-  - node_modules
-  - ~/.cache/yarn  # кеширование yarn
+environment:
+  nodejs_version: "20"
 
 install:
-  - yarn install --frozen-lockfile  # команда установки зависимостей
-
-build: off  # отключаем встроенную в appveyor систему сборки
+  - ps: Install-Product node $env:nodejs_version
+  - yarn install --frozen-lockfile
 
 build_script:
-  - yarn build   # команда сборки
+  - yarn run build
 
 test_script:
-  - yarn lint && yarn test  # скрипт тестирования
+  - yarn test
 
-deploy_script:  # скрипт развёртывания
-  - git config --global credential.helper store
-  - git config --global user.name AppVeyor
-  - git config --global user.email ci@appveyor.com
-  - echo "https://$GITHUB_TOKEN:x-oauth-basic@github.com" > "$HOME/.git-credentials"
-  - npx push-dir --dir=dist --branch=gh-pages --force --verbose
+cache:
+  - node_modules -> yarn.lock
