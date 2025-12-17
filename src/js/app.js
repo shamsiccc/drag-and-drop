@@ -24,27 +24,14 @@ class Storage {
           done: parsed.done || [],
         };
       } catch (e) {
-        return {
-          todo: [
-            'Welcome to Trello!',
-            'This is a card.',
-            'Click on a card to see what\'s behind it.',
-            'You can attach pictures and files...',
-          ],
-          inProgress: [
-            'Drag people onto a card',
-            'Use color-coded labels',
-            'Make as many lists as you need!',
-            'Try dragging cards anywhere.',
-          ],
-          done: [
-            'To learn more tricks, check out the guide.',
-            'Use as many boards as you want.',
-            'Want to use keyboard shortcuts?',
-          ],
-        };
+        console.error('Error loading saved data:', e);
+        return this.getDefaultData();
       }
     }
+    return this.getDefaultData();
+  }
+
+  static getDefaultData() {
     return {
       todo: [
         'Welcome to Trello!',
@@ -68,11 +55,7 @@ class Storage {
 
   static clearAllData() {
     localStorage.removeItem(this.STORAGE_KEY);
-    return {
-      todo: [],
-      inProgress: [],
-      done: [],
-    };
+    return this.getDefaultData();
   }
 }
 
@@ -91,9 +74,7 @@ class DragDrop {
 
   init() {
     this.createPlaceholder();
-    document.addEventListener('mousedown', (e) => this.handleMouseDown(e));
-    document.addEventListener('mousemove', (e) => this.handleMouseMove(e));
-    document.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+    this.setupEventListeners();
   }
 
   createPlaceholder() {
@@ -106,11 +87,22 @@ class DragDrop {
     }
   }
 
+  setupEventListeners() {
+    document.addEventListener('mousedown', this.handleMouseDown.bind(this));
+    document.addEventListener('mousemove', this.handleMouseMove.bind(this));
+    document.addEventListener('mouseup', this.handleMouseUp.bind(this));
+  }
+
   handleMouseDown(e) {
     const card = e.target.closest('.card');
-    if (!card || e.target.closest('.card-delete')) return;
+    if (!card) return;
 
     e.preventDefault();
+
+    if (e.target.closest('.card-delete')) {
+      return;
+    }
+
     this.startDrag(card, e);
   }
 
@@ -129,6 +121,10 @@ class DragDrop {
     this.placeholder.style.display = 'block';
 
     this.updatePlaceholderPosition(e);
+
+    document.querySelectorAll('.cards-container').forEach((container) => {
+      container.addEventListener('dragover', this.handleDragOver.bind(this));
+    });
   }
 
   handleMouseMove(e) {
@@ -150,33 +146,40 @@ class DragDrop {
     this.placeholder.style.display = 'block';
 
     const targetContainer = elementUnderCursor.closest('.cards-container');
-    if (!targetContainer) return;
+    const targetCard = elementUnderCursor.closest('.card');
 
-    this.targetColumn = targetContainer.dataset.column;
+    if (targetContainer) {
+      this.targetColumn = targetContainer.dataset.column;
 
-    document.querySelectorAll('.cards-container').forEach((container) => {
-      container.classList.remove('drag-over');
-    });
+      document.querySelectorAll('.cards-container').forEach((container) => {
+        container.classList.remove('drag-over');
+      });
 
-    targetContainer.classList.add('drag-over');
+      targetContainer.classList.add('drag-over');
 
-    const cards = Array.from(targetContainer.querySelectorAll('.card:not(.dragging)'));
-    if (cards.length === 0) {
-      this.targetPosition = 0;
-    } else {
-      const containerRect = targetContainer.getBoundingClientRect();
-      const relativeY = e.clientY - containerRect.top;
+      const cards = Array.from(targetContainer.querySelectorAll('.card:not(.dragging)'));
+      if (cards.length === 0) {
+        this.targetPosition = 0;
+      } else {
+        const containerRect = targetContainer.getBoundingClientRect();
+        const relativeY = e.clientY - containerRect.top;
 
-      for (let i = 0; i < cards.length; i++) {
-        const cardRect = cards[i].getBoundingClientRect();
-        const cardMiddle = cardRect.top - containerRect.top + cardRect.height / 2;
+        let foundPosition = false;
+        for (let i = 0; i < cards.length; i++) {
+          const cardRect = cards[i].getBoundingClientRect();
+          const cardMiddle = cardRect.top - containerRect.top + cardRect.height / 2;
 
-        if (relativeY < cardMiddle) {
-          this.targetPosition = i;
-          return;
+          if (relativeY < cardMiddle) {
+            this.targetPosition = i;
+            foundPosition = true;
+            break;
+          }
+        }
+
+        if (!foundPosition) {
+          this.targetPosition = cards.length;
         }
       }
-      this.targetPosition = cards.length;
     }
   }
 
@@ -190,6 +193,7 @@ class DragDrop {
   finishDrag() {
     if (this.draggedCard && this.targetColumn !== null) {
       const cardContent = this.draggedCard.querySelector('.card-content').textContent;
+
       this.draggedCard.remove();
 
       const targetContainer = document.querySelector(`[data-column="${this.targetColumn}"] .cards-container`);
@@ -222,14 +226,23 @@ class DragDrop {
       container.classList.remove('drag-over');
     });
   }
+
+  handleDragOver(e) {
+    e.preventDefault();
+  }
 }
 
 class TrelloApp {
   constructor() {
     this.columns = Storage.loadBoardData();
-    this.dragDrop = new DragDrop(this);
+    this.dragDrop = null;
+    this.init();
+  }
+
+  init() {
     this.renderBoard();
     this.setupEventListeners();
+    this.dragDrop = new DragDrop(this);
     this.updateCardCounts();
   }
 
@@ -237,8 +250,10 @@ class TrelloApp {
     ['todo', 'inProgress', 'done'].forEach((columnId) => {
       const container = document.querySelector(`[data-column="${columnId}"] .cards-container`);
       container.innerHTML = '';
+
       this.columns[columnId].forEach((cardText) => {
-        container.appendChild(this.createCardElement(cardText));
+        const cardElement = this.createCardElement(cardText);
+        container.appendChild(cardElement);
       });
     });
   }
@@ -255,10 +270,10 @@ class TrelloApp {
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'card-delete';
     deleteBtn.innerHTML = '✕';
-    deleteBtn.onclick = (e) => {
+    deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this.deleteCard(card);
-    };
+    });
 
     card.appendChild(content);
     card.appendChild(deleteBtn);
@@ -272,7 +287,9 @@ class TrelloApp {
     const cardContent = cardElement.querySelector('.card-content').textContent;
 
     this.columns[column] = this.columns[column].filter((text) => text !== cardContent);
+
     cardElement.remove();
+
     this.saveAndUpdate();
   }
 
@@ -281,7 +298,8 @@ class TrelloApp {
 
     this.columns[columnId].push(text);
     const container = document.querySelector(`[data-column="${columnId}"] .cards-container`);
-    container.appendChild(this.createCardElement(text));
+    const cardElement = this.createCardElement(text);
+    container.appendChild(cardElement);
 
     if (save) {
       this.saveAndUpdate();
@@ -294,6 +312,7 @@ class TrelloApp {
       const cards = Array.from(container.querySelectorAll('.card .card-content'));
       this.columns[columnId] = cards.map((card) => card.textContent);
     });
+
     this.saveAndUpdate();
   }
 
@@ -310,9 +329,9 @@ class TrelloApp {
   }
 
   setupEventListeners() {
-    document.querySelectorAll('.add-another-btn').forEach((btn) => {
-      const button = btn;
-      button.onclick = (e) => {
+    // Add card buttons
+    document.querySelectorAll('.add-another-btn').forEach((button) => {
+      button.addEventListener('click', (e) => {
         const addCardSection = e.target.closest('.add-card');
         const textarea = addCardSection.querySelector('.card-input');
         const controls = addCardSection.querySelector('.add-card-controls');
@@ -322,12 +341,11 @@ class TrelloApp {
         controls.style.display = 'flex';
         addAnotherBtn.style.display = 'none';
         textarea.focus();
-      };
+      });
     });
 
-    document.querySelectorAll('.cancel-card-btn').forEach((btn) => {
-      const button = btn;
-      button.onclick = (e) => {
+    document.querySelectorAll('.cancel-card-btn').forEach((button) => {
+      button.addEventListener('click', (e) => {
         const addCardSection = e.target.closest('.add-card');
         const textarea = addCardSection.querySelector('.card-input');
         const controls = addCardSection.querySelector('.add-card-controls');
@@ -337,12 +355,11 @@ class TrelloApp {
         textarea.style.display = 'none';
         controls.style.display = 'none';
         addAnotherBtn.style.display = 'block';
-      };
+      });
     });
 
-    document.querySelectorAll('.add-card-btn').forEach((btn) => {
-      const button = btn;
-      button.onclick = (e) => {
+    document.querySelectorAll('.add-card-btn').forEach((button) => {
+      button.addEventListener('click', (e) => {
         const addCardSection = e.target.closest('.add-card');
         const textarea = addCardSection.querySelector('.card-input');
         const columnElement = addCardSection.closest('.column');
@@ -356,32 +373,43 @@ class TrelloApp {
           addCardSection.querySelector('.add-card-controls').style.display = 'none';
           addCardSection.querySelector('.add-another-btn').style.display = 'block';
         }
-      };
+      });
     });
 
-    const clearAllBtn = document.getElementById('clear-all');
-    clearAllBtn.onclick = () => {
+    document.getElementById('clear-all').addEventListener('click', () => {
       if (confirm('Are you sure you want to clear all cards? This cannot be undone.')) {
         this.columns = Storage.clearAllData();
         this.renderBoard();
         this.saveAndUpdate();
       }
-    };
+    });
 
-    document.querySelectorAll('.card-input').forEach((input) => {
-      const textarea = input;
-      textarea.onkeydown = (e) => {
+    document.querySelectorAll('.card-input').forEach((textarea) => {
+      textarea.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
           const addCardSection = textarea.closest('.add-card');
           const addBtn = addCardSection.querySelector('.add-card-btn');
           addBtn.click();
         }
-      };
+      });
     });
   }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   new TrelloApp();
+
+  console.log('Trello Clone initialized!');
+  console.log('Features:');
+  console.log('1. Drag and drop cards between columns');
+  console.log('2. Add new cards with "Add another card"');
+  console.log('3. Delete cards by hovering and clicking ✕');
+  console.log('4. All data is saved in LocalStorage');
 });
+
+module.exports = {
+  Storage,
+  TrelloApp,
+  DragDrop,
+};

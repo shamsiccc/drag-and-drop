@@ -1,9 +1,15 @@
+/**
+ * @jest-environment jsdom
+ */
+
+// Мокаем CSS импорт
 jest.mock('../css/style.css', () => ({}));
 
+// Импортируем app.js
 const appModule = require('./app');
-
 const { Storage, TrelloApp, DragDrop } = appModule;
 
+// Мокаем localStorage
 const localStorageMock = (() => {
   let store = {};
   return {
@@ -24,6 +30,7 @@ Object.defineProperty(window, 'localStorage', {
   value: localStorageMock,
 });
 
+// Мокаем alert и confirm
 global.alert = jest.fn();
 global.confirm = jest.fn(() => true);
 
@@ -33,7 +40,7 @@ describe('Trello App - Basic Tests', () => {
     jest.clearAllMocks();
   });
 
-  // Storage class test
+  // 1. Storage class basic tests
   describe('Storage class', () => {
     test('1. loadBoardData returns data structure with arrays', () => {
       const data = Storage.loadBoardData();
@@ -54,15 +61,33 @@ describe('Trello App - Basic Tests', () => {
       expect(localStorage.setItem).toHaveBeenCalled();
     });
 
-    test('3. clearAllData returns empty arrays', () => {
+    test('3. clearAllData returns default data arrays', () => {
       const result = Storage.clearAllData();
-      expect(result.todo).toEqual([]);
-      expect(result.inProgress).toEqual([]);
-      expect(result.done).toEqual([]);
+      
+      // Проверяем что возвращаются дефолтные данные
+      expect(result.todo).toEqual([
+        'Welcome to Trello!',
+        'This is a card.',
+        'Click on a card to see what\'s behind it.',
+        'You can attach pictures and files...'
+      ]);
+      
+      expect(result.inProgress).toEqual([
+        'Drag people onto a card',
+        'Use color-coded labels',
+        'Make as many lists as you need!',
+        'Try dragging cards anywhere.'
+      ]);
+      
+      expect(result.done).toEqual([
+        'To learn more tricks, check out the guide.',
+        'Use as many boards as you want.',
+        'Want to use keyboard shortcuts?'
+      ]);
     });
   });
 
-  // TrelloApp class test
+  // 2. TrelloApp class basic tests
   describe('TrelloApp class', () => {
     let app;
 
@@ -143,7 +168,7 @@ describe('Trello App - Basic Tests', () => {
       expect(app.columns.todo).toContain('New Task');
     });
 
-    test('7. deleteCard removes card from data and DOM - ИСПРАВЛЕНО', () => {
+    test('7. deleteCard removes card from data and DOM', () => {
       const originalTodo = [...app.columns.todo];
 
       app.addCardToColumn('todo', 'Card to delete', false);
@@ -160,9 +185,10 @@ describe('Trello App - Basic Tests', () => {
     });
   });
 
-  // 3. Event listeners test
+  // 3. Event listeners tests
   describe('Event Listeners', () => {
     let app;
+
     beforeEach(() => {
       document.body.innerHTML = `
         <button id="clear-all">Clear All</button>
@@ -251,7 +277,7 @@ describe('Trello App - Basic Tests', () => {
     });
   });
 
-  // DragDrop class test
+  // 4. DragDrop class basic tests
   describe('DragDrop class', () => {
     test('10. DragDrop can be instantiated', () => {
       const mockApp = {
@@ -272,62 +298,66 @@ describe('Trello App - Basic Tests', () => {
         updateColumnData: jest.fn(),
       };
 
-      // Удаляем существующий
-      const oldPlaceholder = document.getElementById('dragPlaceholder');
-      if (oldPlaceholder) {
-        oldPlaceholder.remove();
+      // Удаляем существующий placeholder если есть
+      const existingPlaceholder = document.getElementById('dragPlaceholder');
+      if (existingPlaceholder) {
+        existingPlaceholder.remove();
       }
 
-      // Создаем DragDrop
+      // Создаем экземпляр DragDrop
       const dragDrop = new DragDrop(mockApp);
-
-      // Проверяем что placeholder был создан
+      
+      // Проверяем что placeholder был создан в объекте
       expect(dragDrop.placeholder).toBeDefined();
       expect(dragDrop.placeholder.id).toBe('dragPlaceholder');
-
-      // Не проверяем класс, просто проверяем что элемент существует
-      const placeholderElement = document.getElementById('dragPlaceholder');
-      expect(placeholderElement).not.toBeNull();
+      
+      // Проверяем что это DOM элемент
+      expect(dragDrop.placeholder.nodeType).toBe(1); // 1 = ELEMENT_NODE
+      
+      // Проверяем что элемент добавлен в DOM
+      const placeholderInDom = document.getElementById('dragPlaceholder');
+      expect(placeholderInDom).not.toBeNull();
+      expect(placeholderInDom).toBe(dragDrop.placeholder);
     });
+  });
 
-    // Integration test
-    describe('Integration', () => {
-      test('12. Storage methods work correctly in sequence - ИСПРАВЛЕНО', () => {
-        const originalSaveBoardData = Storage.saveBoardData;
-        const originalClearAllData = Storage.clearAllData;
-        const originalLoadBoardData = Storage.loadBoardData;
+  // 5. Integration test
+  describe('Integration', () => {
+    test('12. Storage methods work correctly in sequence', () => {
+      const originalSaveBoardData = Storage.saveBoardData;
+      const originalClearAllData = Storage.clearAllData;
+      const originalLoadBoardData = Storage.loadBoardData;
 
-        Storage.clearAllData = jest.fn(() => ({
-          todo: [],
-          inProgress: [],
-          done: [],
-        }));
+      Storage.clearAllData = jest.fn(() => ({
+        todo: [],
+        inProgress: [],
+        done: [],
+      }));
 
-        const clearedData = Storage.clearAllData();
-        expect(clearedData.todo).toEqual([]);
-        expect(Storage.clearAllData).toHaveBeenCalled();
+      const clearedData = Storage.clearAllData();
+      expect(clearedData.todo).toEqual([]);
+      expect(Storage.clearAllData).toHaveBeenCalled();
 
-        Storage.saveBoardData = jest.fn();
+      Storage.saveBoardData = jest.fn();
 
-        const testData = {
-          todo: ['Task 1'],
-          inProgress: [],
-          done: [],
-        };
+      const testData = {
+        todo: ['Task 1'],
+        inProgress: [],
+        done: [],
+      };
 
-        Storage.saveBoardData(testData);
-        expect(Storage.saveBoardData).toHaveBeenCalledWith(testData);
+      Storage.saveBoardData(testData);
+      expect(Storage.saveBoardData).toHaveBeenCalledWith(testData);
 
-        Storage.loadBoardData = jest.fn(() => testData);
+      Storage.loadBoardData = jest.fn(() => testData);
 
-        const loadedData = Storage.loadBoardData();
-        expect(loadedData.todo).toEqual(['Task 1']);
-        expect(Storage.loadBoardData).toHaveBeenCalled();
+      const loadedData = Storage.loadBoardData();
+      expect(loadedData.todo).toEqual(['Task 1']);
+      expect(Storage.loadBoardData).toHaveBeenCalled();
 
-        Storage.saveBoardData = originalSaveBoardData;
-        Storage.clearAllData = originalClearAllData;
-        Storage.loadBoardData = originalLoadBoardData;
-      });
+      Storage.saveBoardData = originalSaveBoardData;
+      Storage.clearAllData = originalClearAllData;
+      Storage.loadBoardData = originalLoadBoardData;
     });
   });
 });
