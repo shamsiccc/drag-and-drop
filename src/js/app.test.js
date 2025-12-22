@@ -1,15 +1,8 @@
-/**
- * @jest-environment jsdom
- */
-
-// Мокаем CSS импорт
 jest.mock('../css/style.css', () => ({}));
 
-// Импортируем app.js
 const appModule = require('./app');
 const { Storage, TrelloApp, DragDrop } = appModule;
 
-// Мокаем localStorage
 const localStorageMock = (() => {
   let store = {};
   return {
@@ -30,7 +23,6 @@ Object.defineProperty(window, 'localStorage', {
   value: localStorageMock,
 });
 
-// Мокаем alert и confirm
 global.alert = jest.fn();
 global.confirm = jest.fn(() => true);
 
@@ -38,9 +30,13 @@ describe('Trello App - Basic Tests', () => {
   beforeEach(() => {
     localStorage.clear();
     jest.clearAllMocks();
+    jest.spyOn(Date, 'now').mockReturnValue(1234567890);
   });
 
-  // 1. Storage class basic tests
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   describe('Storage class', () => {
     test('1. loadBoardData returns data structure with arrays', () => {
       const data = Storage.loadBoardData();
@@ -64,7 +60,6 @@ describe('Trello App - Basic Tests', () => {
     test('3. clearAllData returns default data arrays', () => {
       const result = Storage.clearAllData();
       
-      // Проверяем что возвращаются дефолтные данные
       expect(result.todo).toEqual([
         'Welcome to Trello!',
         'This is a card.',
@@ -87,7 +82,6 @@ describe('Trello App - Basic Tests', () => {
     });
   });
 
-  // 2. TrelloApp class basic tests
   describe('TrelloApp class', () => {
     let app;
 
@@ -145,7 +139,9 @@ describe('Trello App - Basic Tests', () => {
 
     test('4. TrelloApp initializes with data', () => {
       expect(app.columns).toBeDefined();
-      expect(app.columns.todo).toEqual(['Test Task 1']);
+      expect(app.columns.todo).toHaveLength(1);
+      expect(app.columns.todo[0]).toHaveProperty('id');
+      expect(app.columns.todo[0]).toHaveProperty('text', 'Test Task 1');
       expect(app.columns.inProgress).toEqual([]);
       expect(app.columns.done).toEqual([]);
     });
@@ -157,6 +153,7 @@ describe('Trello App - Basic Tests', () => {
       expect(cardElement.draggable).toBe(true);
       expect(cardElement.querySelector('.card-content').textContent).toBe('New Card');
       expect(cardElement.querySelector('.card-delete')).toBeDefined();
+      expect(cardElement.dataset.cardId).toBeDefined();
     });
 
     test('6. addCardToColumn adds card to column', () => {
@@ -165,27 +162,29 @@ describe('Trello App - Basic Tests', () => {
       app.addCardToColumn('todo', 'New Task', false);
 
       expect(app.columns.todo.length).toBe(initialLength + 1);
-      expect(app.columns.todo).toContain('New Task');
+      const lastCard = app.columns.todo[app.columns.todo.length - 1];
+      expect(lastCard).toHaveProperty('text', 'New Task');
+      expect(lastCard).toHaveProperty('id');
     });
 
     test('7. deleteCard removes card from data and DOM', () => {
-      const originalTodo = [...app.columns.todo];
+      const originalTodoLength = app.columns.todo.length;
 
       app.addCardToColumn('todo', 'Card to delete', false);
 
       const container = document.querySelector('[data-column="todo"] .cards-container');
       const cards = container.querySelectorAll('.card');
       const cardToDelete = cards[cards.length - 1];
+      const cardId = cardToDelete.dataset.cardId;
 
       const lengthBeforeDelete = app.columns.todo.length;
       app.deleteCard(cardToDelete);
 
       expect(app.columns.todo.length).toBe(lengthBeforeDelete - 1);
-      expect(app.columns.todo).toEqual(originalTodo);
+      expect(app.columns.todo.find(card => card.id === cardId)).toBeUndefined();
     });
   });
 
-  // 3. Event listeners tests
   describe('Event Listeners', () => {
     let app;
 
@@ -277,7 +276,6 @@ describe('Trello App - Basic Tests', () => {
     });
   });
 
-  // 4. DragDrop class basic tests
   describe('DragDrop class', () => {
     test('10. DragDrop can be instantiated', () => {
       const mockApp = {
@@ -298,30 +296,24 @@ describe('Trello App - Basic Tests', () => {
         updateColumnData: jest.fn(),
       };
 
-      // Удаляем существующий placeholder если есть
       const existingPlaceholder = document.getElementById('dragPlaceholder');
       if (existingPlaceholder) {
         existingPlaceholder.remove();
       }
 
-      // Создаем экземпляр DragDrop
       const dragDrop = new DragDrop(mockApp);
       
-      // Проверяем что placeholder был создан в объекте
       expect(dragDrop.placeholder).toBeDefined();
       expect(dragDrop.placeholder.id).toBe('dragPlaceholder');
       
-      // Проверяем что это DOM элемент
-      expect(dragDrop.placeholder.nodeType).toBe(1); // 1 = ELEMENT_NODE
+      expect(dragDrop.placeholder.nodeType).toBe(1);
       
-      // Проверяем что элемент добавлен в DOM
       const placeholderInDom = document.getElementById('dragPlaceholder');
       expect(placeholderInDom).not.toBeNull();
       expect(placeholderInDom).toBe(dragDrop.placeholder);
     });
   });
 
-  // 5. Integration test
   describe('Integration', () => {
     test('12. Storage methods work correctly in sequence', () => {
       const originalSaveBoardData = Storage.saveBoardData;
